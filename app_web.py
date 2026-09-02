@@ -8,12 +8,44 @@ from openpyxl.styles import PatternFill
 
 # Configuração da página Web
 st.set_page_config(
-    page_title="Controle de Embarques e Chegadas",
+    page_title="FleetControl Web • Gestão de Embarques",
     page_icon="🚚",
     layout="wide"
 )
 
 DB_NAME = "controle_embarques.db"
+
+# Estilização CSS Personalizada para deixar o layout alegre e moderno
+st.markdown("""
+    <style>
+        .stApp {
+            background-color: #f8fafc;
+        }
+        .header-box {
+            background-color: #006699;
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+            margin-bottom: 20px;
+        }
+        .kpi-card {
+            background-color: white;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .kpi-value {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .kpi-label {
+            color: #64748b;
+            font-size: 13px;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- BANCO DE DADOS ---
 def inicializar_banco():
@@ -74,16 +106,44 @@ def calcular_status_prazo(prev_str, real_str):
 
 inicializar_banco()
 
-st.title("🚚 Controle de Embarques e Chegadas de Veículos")
+# --- HEADER PRINCIPAL ---
+st.markdown("""
+    <div class="header-box">
+        <h2 style="margin:0; color:white;">🚚 FleetControl • Gestão de Embarques & Chegadas</h2>
+        <p style="margin:0; opacity:0.8; font-size:14px;">Painel de acompanhamento dinâmico e em tempo real</p>
+    </div>
+""", unsafe_allow_html=True)
 
-# --- GERENCIAMENTO DE ESTADO PARA EDIÇÃO ---
+# --- CARREGAR DADOS DOS CARDS (KPIs) ---
+conn = sqlite3.connect(DB_NAME)
+df_kpi = pd.read_sql_query("SELECT * FROM embarques", conn)
+conn.close()
+
+total_regs = len(df_kpi)
+pendentes = len(df_kpi[df_kpi['chegada'].str.strip() == '']) if not df_kpi.empty else 0
+concluidos = len(df_kpi[(df_kpi['chegada'].str.strip() != '') & (df_kpi['real_carreg'].str.strip() != '')]) if not df_kpi.empty else 0
+atrasados = len(df_kpi[df_kpi['status_prazo'] == 'Atraso']) if not df_kpi.empty else 0
+
+# Cards
+k1, k2, k3, k4 = st.columns(4)
+with k1:
+    st.markdown(f'<div class="kpi-card"><div class="kpi-value" style="color:#0088cc;">{total_regs}</div><div class="kpi-label">Total Registros</div></div>', unsafe_allow_html=True)
+with k2:
+    st.markdown(f'<div class="kpi-card"><div class="kpi-value" style="color:#e63946;">{pendentes}</div><div class="kpi-label">Chegadas Pendentes</div></div>', unsafe_allow_html=True)
+with k3:
+    st.markdown(f'<div class="kpi-card"><div class="kpi-value" style="color:#2a9d8f;">{concluidos}</div><div class="kpi-label">Carregados (Verde)</div></div>', unsafe_allow_html=True)
+with k4:
+    st.markdown(f'<div class="kpi-card"><div class="kpi-value" style="color:#e76f51;">{atrasados}</div><div class="kpi-label">Com Atraso</div></div>', unsafe_allow_html=True)
+
+st.write("")
+
+# --- GERENCIAMENTO DE SELEÇÃO E EDIÇÃO ---
 conn = sqlite3.connect(DB_NAME)
 df_lista = pd.read_sql_query("SELECT id, cavalo, carreta, motorista FROM embarques ORDER BY id DESC", conn)
 conn.close()
 
 opcoes_edicao = ["➕ Novo Registro"] + [f"ID {row['id']} - Cavalo: {row['cavalo']} | Carreta: {row['carreta']}" for _, row in df_lista.iterrows()]
 
-# Seleção fora do formulário para disparar recarregamento imediato
 selecao = st.selectbox("📌 Selecione um registro existente para editar ou crie um novo:", opcoes_edicao)
 
 id_selecionado = None
@@ -108,7 +168,7 @@ if selecao != "➕ Novo Registro":
 
 # --- FORMULÁRIO DE CADASTRO / EDIÇÃO ---
 with st.form("form_embarque", clear_on_submit=False):
-    st.markdown(f"### {'✏️ Editando Registro ID ' + str(id_selecionado) if id_selecionado else '➕ Novo Cadastro'}")
+    st.markdown(f"### {'✏️ Editando Registro ID ' + str(id_selecionado) if id_selecionado else '✨ Cadastro e Atualização de Veículos'}")
     
     c1, c2, c3, c4 = st.columns(4)
     cavalo = c1.text_input("Placa Cavalo*", value=dados_atuais.get("cavalo", "")).upper()
@@ -117,14 +177,14 @@ with st.form("form_embarque", clear_on_submit=False):
     frete = c4.text_input("Valor Frete (R$)", value=dados_atuais.get("frete", ""))
 
     c5, c6, c7, c8 = st.columns(4)
-    prev_chegada = c5.text_input("Prev. Chegada (Ex: 10/05/2026 14:00)", value=dados_atuais.get("prev_chegada", ""))
+    prev_chegada = c5.text_input("Prev. Chegada", value=dados_atuais.get("prev_chegada", ""))
     loc_chegada = c6.text_input("Localizador (Chegada)", value=dados_atuais.get("loc_chegada", ""))
     trava_chegada = c7.text_input("Trava (Chegada)", value=dados_atuais.get("trava_chegada", ""))
-    chegada_real = c8.text_input("Chegada Real (Ex: 10/05/2026 14:00)", value=dados_atuais.get("chegada", ""))
+    chegada_real = c8.text_input("Chegada Real", value=dados_atuais.get("chegada", ""))
 
     c9, c10, c11, c12 = st.columns(4)
-    prev_carreg = c9.text_input("Prev. Carregamento (Ex: 10/05/2026)", value=dados_atuais.get("prev_carreg", ""))
-    real_carreg = c10.text_input("Data Real Carregamento (Ex: 10/05/2026)", value=dados_atuais.get("real_carreg", ""))
+    prev_carreg = c9.text_input("Prev. Carregamento", value=dados_atuais.get("prev_carreg", ""))
+    real_carreg = c10.text_input("Data Real Carregamento", value=dados_atuais.get("real_carreg", ""))
     loc_carreg = c11.text_input("Localizador (Carreg.)", value=dados_atuais.get("loc_carreg", ""))
     trava_carreg = c12.text_input("Trava (Carreg.)", value=dados_atuais.get("trava_carreg", ""))
 
@@ -134,8 +194,7 @@ with st.form("form_embarque", clear_on_submit=False):
     destino = c13.selectbox("Destino da Carga", ["SEST/VDC", "SEST/VDC/SP"], index=idx_destino)
     prazo = c14.text_input("Prazo Pagamento", value=dados_atuais.get("prazo", ""))
 
-    col_btn1, col_btn2 = st.columns([1, 1])
-    salvar = col_btn1.form_submit_button("💾 Salvar Alterações" if id_selecionado else "💾 Cadastrar")
+    salvar = st.form_submit_button("💾 Salvar Registro", type="primary")
 
     if salvar:
         if not cavalo:
@@ -176,9 +235,8 @@ with st.form("form_embarque", clear_on_submit=False):
             conn.close()
             st.rerun()
 
-# --- OPÇÃO PARA DELETAR REGISTRO SELECIONADO ---
 if id_selecionado:
-    if st.button(f"🗑️ Excluir Registro ID {id_selecionado}", type="primary"):
+    if st.button(f"🗑️ Excluir Registro ID {id_selecionado}"):
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM embarques WHERE id=?", (id_selecionado,))
@@ -187,12 +245,14 @@ if id_selecionado:
         st.success(f"Registro ID {id_selecionado} excluído!")
         st.rerun()
 
+st.divider()
+
 # --- CONSULTA, FILTROS E TABELA ---
-st.subheader("📊 Painel Geral de Registros")
+st.subheader("🔍 Filtros Rápidos")
 
 f1, f2 = st.columns(2)
-filtro_placa = f1.text_input("🔍 Filtrar por Placa (Cavalo ou Carreta)").strip().upper()
-filtro_data = f2.text_input("📅 Filtrar por Data (Carregamento/Chegada)").strip()
+filtro_placa = f1.text_input("Filtrar por Placa (Cavalo ou Carreta)").strip().upper()
+filtro_data = f2.text_input("Filtrar por Data (Carregamento/Chegada)").strip()
 
 conn = sqlite3.connect(DB_NAME)
 df = pd.read_sql_query("SELECT * FROM embarques ORDER BY id DESC", conn)
@@ -210,14 +270,14 @@ if not df.empty:
         
         cor = ""
         if not chegada:
-            cor = "background-color: #ffcccc; color: black;"
+            cor = "background-color: #fecdd3; color: #881337;" # Vermelho Pastel
         elif chegada:
-            cor = "background-color: #cce5ff; color: black;"
+            cor = "background-color: #e0f2fe; color: #0369a1;" # Azul Pastel
 
         if not real_carreg and chegada:
-            cor = "background-color: #fff3cd; color: black;"
+            cor = "background-color: #fef08a; color: #713f12;" # Amarelo Pastel
         elif real_carreg and chegada:
-            cor = "background-color: #d4edda; color: black;"
+            cor = "background-color: #dcfce7; color: #14532d;" # Verde Pastel
 
         return [cor] * len(row)
 
@@ -276,7 +336,7 @@ if not df.empty:
 
     excel_data = gerar_excel(df)
     st.download_button(
-        label="📥 Baixar Relatório Formatado em Excel (.xlsx)",
+        label="📊 Exportar Relatório Formatado em Excel (.xlsx)",
         data=excel_data,
         file_name=f"relatorio_embarques_{datetime.now().strftime('%d_%m_%Y')}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
