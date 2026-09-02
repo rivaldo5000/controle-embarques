@@ -109,7 +109,7 @@ inicializar_banco()
 # --- HEADER PRINCIPAL ---
 st.markdown("""
     <div class="header-box">
-        <h2 style="margin:0; color:white;">🚚 FleetControl • Gestão de Embarques & Chegadas</h2>
+        <h2 style="margin:0; color:white;">🚚 MVI • Gestão de Embarques & Chegadas</h2>
         <p style="margin:0; opacity:0.8; font-size:14px;">Painel de acompanhamento dinâmico e em tempo real</p>
     </div>
 """, unsafe_allow_html=True)
