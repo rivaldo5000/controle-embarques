@@ -76,110 +76,126 @@ inicializar_banco()
 
 st.title("🚚 Controle de Embarques e Chegadas de Veículos")
 
-# --- FORMULÁRIO DE CADASTRO / EDIÇÃO ---
-with st.expander("📝 Formutário de Cadastro e Edição de Registros", expanded=True):
-    # Opção para carregar registro existente para edição
+# --- GERENCIAMENTO DE ESTADO PARA EDIÇÃO ---
+conn = sqlite3.connect(DB_NAME)
+df_lista = pd.read_sql_query("SELECT id, cavalo, carreta, motorista FROM embarques ORDER BY id DESC", conn)
+conn.close()
+
+opcoes_edicao = ["➕ Novo Registro"] + [f"ID {row['id']} - Cavalo: {row['cavalo']} | Carreta: {row['carreta']}" for _, row in df_lista.iterrows()]
+
+# Seleção fora do formulário para disparar recarregamento imediato
+selecao = st.selectbox("📌 Selecione um registro existente para editar ou crie um novo:", opcoes_edicao)
+
+id_selecionado = None
+dados_atuais = {}
+
+if selecao != "➕ Novo Registro":
+    id_selecionado = int(selecao.split(" ")[1])
     conn = sqlite3.connect(DB_NAME)
-    df_lista = pd.read_sql_query("SELECT id, cavalo, carreta, motorista FROM embarques", conn)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM embarques WHERE id=?", (id_selecionado,))
+    r = cursor.fetchone()
     conn.close()
+    
+    if r:
+        dados_atuais = {
+            "cavalo": r[1] or "", "carreta": r[2] or "", "motorista": r[3] or "", 
+            "prev_chegada": r[4] or "", "loc_chegada": r[5] or "", "trava_chegada": r[6] or "", 
+            "chegada": r[7] or "", "prev_carreg": r[9] or "", "real_carreg": r[10] or "", 
+            "loc_carreg": r[11] or "", "trava_carreg": r[12] or "", "destino": r[13] or "SEST/VDC", 
+            "frete": r[14] or "", "prazo": r[15] or ""
+        }
 
-    opcoes_edicao = ["Novo Registro"] + [f"ID {row['id']} - Cavalo: {row['cavalo']} | Carreta: {row['carreta']}" for _, row in df_lista.iterrows()]
-    selecao = st.selectbox("Selecione um registro para editar ou crie um novo:", opcoes_edicao)
+# --- FORMULÁRIO DE CADASTRO / EDIÇÃO ---
+with st.form("form_embarque", clear_on_submit=False):
+    st.markdown(f"### {'✏️ Editando Registro ID ' + str(id_selecionado) if id_selecionado else '➕ Novo Cadastro'}")
+    
+    c1, c2, c3, c4 = st.columns(4)
+    cavalo = c1.text_input("Placa Cavalo*", value=dados_atuais.get("cavalo", "")).upper()
+    carreta = c2.text_input("Placa Carreta", value=dados_atuais.get("carreta", "")).upper()
+    motorista = c3.text_input("Motorista", value=dados_atuais.get("motorista", ""))
+    frete = c4.text_input("Valor Frete (R$)", value=dados_atuais.get("frete", ""))
 
-    dados_atuais = {}
-    id_selecionado = None
+    c5, c6, c7, c8 = st.columns(4)
+    prev_chegada = c5.text_input("Prev. Chegada (Ex: 10/05/2026 14:00)", value=dados_atuais.get("prev_chegada", ""))
+    loc_chegada = c6.text_input("Localizador (Chegada)", value=dados_atuais.get("loc_chegada", ""))
+    trava_chegada = c7.text_input("Trava (Chegada)", value=dados_atuais.get("trava_chegada", ""))
+    chegada_real = c8.text_input("Chegada Real (Ex: 10/05/2026 14:00)", value=dados_atuais.get("chegada", ""))
 
-    if selecao != "Novo Registro":
-        id_selecionado = int(selecao.split(" ")[1])
+    c9, c10, c11, c12 = st.columns(4)
+    prev_carreg = c9.text_input("Prev. Carregamento (Ex: 10/05/2026)", value=dados_atuais.get("prev_carreg", ""))
+    real_carreg = c10.text_input("Data Real Carregamento (Ex: 10/05/2026)", value=dados_atuais.get("real_carreg", ""))
+    loc_carreg = c11.text_input("Localizador (Carreg.)", value=dados_atuais.get("loc_carreg", ""))
+    trava_carreg = c12.text_input("Trava (Carreg.)", value=dados_atuais.get("trava_carreg", ""))
+
+    c13, c14 = st.columns(2)
+    dest_val = dados_atuais.get("destino", "SEST/VDC")
+    idx_destino = 0 if dest_val == "SEST/VDC" else 1
+    destino = c13.selectbox("Destino da Carga", ["SEST/VDC", "SEST/VDC/SP"], index=idx_destino)
+    prazo = c14.text_input("Prazo Pagamento", value=dados_atuais.get("prazo", ""))
+
+    col_btn1, col_btn2 = st.columns([1, 1])
+    salvar = col_btn1.form_submit_button("💾 Salvar Alterações" if id_selecionado else "💾 Cadastrar")
+
+    if salvar:
+        if not cavalo:
+            st.error("A Placa do Cavalo é obrigatória!")
+        else:
+            status_prazo = calcular_status_prazo(prev_chegada, chegada_real)
+            conn = sqlite3.connect(DB_NAME)
+            cursor = conn.cursor()
+
+            if id_selecionado is None:
+                cursor.execute("""
+                    INSERT INTO embarques (
+                        cavalo, carreta, motorista, prev_chegada, loc_chegada, trava_chegada,
+                        chegada, status_prazo, prev_carreg, real_carreg, loc_carreg, trava_carreg,
+                        destino, frete, prazo
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    cavalo, carreta, motorista, prev_chegada, loc_chegada, trava_chegada,
+                    chegada_real, status_prazo, prev_carreg, real_carreg, loc_carreg, trava_carreg,
+                    destino, frete, prazo
+                ))
+                st.success("Registro cadastrado com sucesso!")
+            else:
+                cursor.execute("""
+                    UPDATE embarques SET
+                        cavalo=?, carreta=?, motorista=?, prev_chegada=?, loc_chegada=?, trava_chegada=?,
+                        chegada=?, status_prazo=?, prev_carreg=?, real_carreg=?, loc_carreg=?, trava_carreg=?,
+                        destino=?, frete=?, prazo=?
+                    WHERE id=?
+                """, (
+                    cavalo, carreta, motorista, prev_chegada, loc_chegada, trava_chegada,
+                    chegada_real, status_prazo, prev_carreg, real_carreg, loc_carreg, trava_carreg,
+                    destino, frete, prazo, id_selecionado
+                ))
+                st.success(f"Registro ID {id_selecionado} atualizado com sucesso!")
+
+            conn.commit()
+            conn.close()
+            st.rerun()
+
+# --- OPÇÃO PARA DELETAR REGISTRO SELECIONADO ---
+if id_selecionado:
+    if st.button(f"🗑️ Excluir Registro ID {id_selecionado}", type="primary"):
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM embarques WHERE id=?", (id_selecionado,))
-        r = cursor.fetchone()
+        cursor.execute("DELETE FROM embarques WHERE id=?", (id_selecionado,))
+        conn.commit()
         conn.close()
-        
-        if r:
-            dados_atuais = {
-                "cavalo": r[1], "carreta": r[2], "motorista": r[3], "prev_chegada": r[4],
-                "loc_chegada": r[5], "trava_chegada": r[6], "chegada": r[7], "prev_carreg": r[9],
-                "real_carreg": r[10], "loc_carreg": r[11], "trava_carreg": r[12],
-                "destino": r[13], "frete": r[14], "prazo": r[15]
-            }
-
-    with st.form("form_embarque", clear_on_submit=False):
-        c1, c2, c3, c4 = st.columns(4)
-        cavalo = c1.text_input("Placa Cavalo*", value=dados_atuais.get("cavalo", "")).upper()
-        carreta = c2.text_input("Placa Carreta", value=dados_atuais.get("carreta", "")).upper()
-        motorista = c3.text_input("Motorista", value=dados_atuais.get("motorista", ""))
-        frete = c4.text_input("Valor Frete (R$)", value=dados_atuais.get("frete", ""))
-
-        c5, c6, c7, c8 = st.columns(4)
-        prev_chegada = c5.text_input("Prev. Chegada (Ex: 10/05/2026 14:00)", value=dados_atuais.get("prev_chegada", ""))
-        loc_chegada = c6.text_input("Localizador (Chegada)", value=dados_atuais.get("loc_chegada", ""))
-        trava_chegada = c7.text_input("Trava (Chegada)", value=dados_atuais.get("trava_chegada", ""))
-        chegada_real = c8.text_input("Chegada Real (Ex: 10/05/2026 14:00)", value=dados_atuais.get("chegada", ""))
-
-        c9, c10, c11, c12 = st.columns(4)
-        prev_carreg = c9.text_input("Prev. Carregamento (Ex: 10/05/2026)", value=dados_atuais.get("prev_carreg", ""))
-        real_carreg = c10.text_input("Data Real Carregamento (Ex: 10/05/2026)", value=dados_atuais.get("real_carreg", ""))
-        loc_carreg = c11.text_input("Localizador (Carreg.)", value=dados_atuais.get("loc_carreg", ""))
-        trava_carreg = c12.text_input("Trava (Carreg.)", value=dados_atuais.get("trava_carreg", ""))
-
-        c13, c14 = st.columns(2)
-        idx_destino = 0 if dados_atuais.get("destino", "") == "SEST/VDC" else 1
-        destino = c13.selectbox("Destino da Carga", ["SEST/VDC", "SEST/VDC/SP"], index=idx_destino)
-        prazo = c14.text_input("Prazo Pagamento", value=dados_atuais.get("prazo", ""))
-
-        col_btn1, col_btn2 = st.columns([1, 5])
-        salvar = col_btn1.form_submit_button("💾 Salvar Registro")
-
-        if salvar:
-            if not cavalo:
-                st.error("A Placa do Cavalo é obrigatória!")
-            else:
-                status_prazo = calcular_status_prazo(prev_chegada, chegada_real)
-                conn = sqlite3.connect(DB_NAME)
-                cursor = conn.cursor()
-
-                if id_selecionado is None:
-                    cursor.execute("""
-                        INSERT INTO embarques (
-                            cavalo, carreta, motorista, prev_chegada, loc_chegada, trava_chegada,
-                            chegada, status_prazo, prev_carreg, real_carreg, loc_carreg, trava_carreg,
-                            destino, frete, prazo
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (
-                        cavalo, carreta, motorista, prev_chegada, loc_chegada, trava_chegada,
-                        chegada_real, status_prazo, prev_carreg, real_carreg, loc_carreg, trava_carreg,
-                        destino, frete, prazo
-                    ))
-                    st.success("Registro adicionado com sucesso!")
-                else:
-                    cursor.execute("""
-                        UPDATE embarques SET
-                            cavalo=?, carreta=?, motorista=?, prev_chegada=?, loc_chegada=?, trava_chegada=?,
-                            chegada=?, status_prazo=?, prev_carreg=?, real_carreg=?, loc_carreg=?, trava_carreg=?,
-                            destino=?, frete=?, prazo=?
-                        WHERE id=?
-                    """, (
-                        cavalo, carreta, motorista, prev_chegada, loc_chegada, trava_chegada,
-                        chegada_real, status_prazo, prev_carreg, real_carreg, loc_carreg, trava_carreg,
-                        destino, frete, prazo, id_selecionado
-                    ))
-                    st.success("Registro atualizado com sucesso!")
-
-                conn.commit()
-                conn.close()
-                st.rerun()
+        st.success(f"Registro ID {id_selecionado} excluído!")
+        st.rerun()
 
 # --- CONSULTA, FILTROS E TABELA ---
-st.subheader("📊 Painel de Registros")
+st.subheader("📊 Painel Geral de Registros")
 
-f1, f2, f3 = st.columns([2, 2, 2])
+f1, f2 = st.columns(2)
 filtro_placa = f1.text_input("🔍 Filtrar por Placa (Cavalo ou Carreta)").strip().upper()
 filtro_data = f2.text_input("📅 Filtrar por Data (Carregamento/Chegada)").strip()
 
 conn = sqlite3.connect(DB_NAME)
-df = pd.read_sql_query("SELECT * FROM embarques", conn)
+df = pd.read_sql_query("SELECT * FROM embarques ORDER BY id DESC", conn)
 conn.close()
 
 if not df.empty:
@@ -188,28 +204,26 @@ if not df.empty:
     if filtro_data:
         df = df[df["real_carreg"].str.contains(filtro_data, na=False) | df["prev_carreg"].str.contains(filtro_data, na=False)]
 
-    # Aplicação de estilo de cores na tabela do site
     def aplicar_cores(row):
         chegada = row["chegada"]
         real_carreg = row["real_carreg"]
         
         cor = ""
         if not chegada:
-            cor = "background-color: #ffcccc; color: black;"  # Vermelho
+            cor = "background-color: #ffcccc; color: black;"
         elif chegada:
-            cor = "background-color: #cce5ff; color: black;"  # Azul
+            cor = "background-color: #cce5ff; color: black;"
 
         if not real_carreg and chegada:
-            cor = "background-color: #fff3cd; color: black;"  # Amarelo
+            cor = "background-color: #fff3cd; color: black;"
         elif real_carreg and chegada:
-            cor = "background-color: #d4edda; color: black;"  # Verde
+            cor = "background-color: #d4edda; color: black;"
 
         return [cor] * len(row)
 
-    # Exibição da tabela interativa
     st.dataframe(df.style.apply(aplicar_cores, axis=1), use_container_width=True, height=400)
 
-    # --- GERADOR DE RELATÓRIO EXCEL ---
+    # --- EXPORTAÇÃO EXCEL ---
     def gerar_excel(data_frame):
         output = io.BytesIO()
         df_export = data_frame.copy()
