@@ -8,7 +8,7 @@ from openpyxl.styles import PatternFill
 
 # Configuração da página Web
 st.set_page_config(
-    page_title="FleetControl Web • Gestão de Embarques",
+    page_title="MVI • Gestão de Embarques",
     page_icon="🚚",
     layout="wide"
 )
