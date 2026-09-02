@@ -8,9 +8,9 @@ from openpyxl.styles import PatternFill
 
 # Configuração da página Web
 st.set_page_config(
-    page_title="MVI • Gestão de Embarques",
-    page_icon="🚚",
-    layout="wide"
+    page_title="FleetControl Web • Gestão de Embarques",
+    page_icon="🚛",
+    layout="wide
 )
 
 DB_NAME = "controle_embarques.db"
@@ -109,7 +109,7 @@ inicializar_banco()
 # --- HEADER PRINCIPAL ---
 st.markdown("""
     <div class="header-box">
-        <h2 style="margin:0; color:white;">🚚 MVI • Gestão de Embarques & Chegadas</h2>
+        <h2 style="margin:0; color:white;">🚛 MVI • Gestão de Embarques & Chegadas</h2>
         <p style="margin:0; opacity:0.8; font-size:14px;">Painel de acompanhamento dinâmico e em tempo real</p>
     </div>
 """, unsafe_allow_html=True)
